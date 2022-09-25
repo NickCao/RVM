@@ -1,12 +1,8 @@
 //! Rcore Virtual Machine
 
 #![no_std]
-#![feature(asm)]
-#![feature(llvm_asm)]
-#![feature(global_asm)]
 #![feature(untagged_unions)]
 #![allow(clippy::upper_case_acronyms)]
-#![deny(warnings)]
 
 #[cfg(target_arch = "x86_64")]
 #[macro_use]

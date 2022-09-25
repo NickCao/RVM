@@ -3,6 +3,9 @@
 use bit_field::BitField;
 use x86::msr;
 use x86_64::registers::{control::Cr0Flags, model_specific::Msr};
+use core::arch::asm;
+use x86::bits64::rflags::{self, RFlags};
+use x86::vmx::{Result, VmFail};
 
 use super::vcpu::InterruptState;
 
@@ -27,12 +30,23 @@ pub enum InvEptType {
     Global = 2,
 }
 
-pub unsafe fn invept(invalidation: InvEptType, eptp: u64) -> Option<()> {
-    let err: bool;
-    let descriptor = InvEptDescriptor { eptp, reserved: 0 };
-    llvm_asm!("invept ($1), $2; setna $0" : "=r" (err) : "r" (&descriptor), "r" (invalidation) : "cc", "memory" : "volatile");
+#[inline(always)]
+fn vmx_capture_status() -> Result<()> {
+    let flags = rflags::read();
 
-    if err {
+    if flags.contains(RFlags::FLAGS_ZF) {
+        Err(VmFail::VmFailValid)
+    } else if flags.contains(RFlags::FLAGS_CF) {
+        Err(VmFail::VmFailInvalid)
+    } else {
+        Ok(())
+    }
+}
+
+pub unsafe fn invept(invalidation: InvEptType, eptp: u64) -> Option<()> {
+    let descriptor = InvEptDescriptor { eptp, reserved: 0 };
+    core::arch::asm!("invept {}, [{}]", in(reg) invalidation as u64, in(reg) &descriptor);
+    if vmx_capture_status().is_err() {
         None
     } else {
         Some(())
@@ -73,7 +87,7 @@ pub(crate) fn cr4_is_valid(cr4_value: u64) -> bool {
 /// Get TR base.
 pub unsafe fn tr_base(tr: u16) -> u64 {
     let mut dtp = x86::dtables::DescriptorTablePointer::new(&0u64);
-    llvm_asm!("sgdt ($0)" :: "r"(&mut dtp) : "memory" : "volatile");
+    core::arch::asm!("sgdt [{0}]", in(reg) &mut dtp, options(nostack, preserves_flags));
     let tss_descriptor = (dtp.base as usize + tr as usize) as *mut u64;
     let low = tss_descriptor.read();
     let high = tss_descriptor.add(1).read();

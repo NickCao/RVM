@@ -23,6 +23,8 @@ use x86_64::{
     registers::model_specific::{Efer, EferFlags},
     registers::rflags::RFlags,
 };
+use core::arch::asm;
+use core::arch::global_asm;
 
 const BASE_PROCESSOR_VPID: u16 = 1;
 const X86_FLAGS_RESERVED_ONES: usize = 1 << 1;
@@ -743,7 +745,6 @@ extern "sysv64" {
 
 global_asm!(
     "
-.intel_syntax noprefix
 .global vmx_entry
 vmx_entry:
     // Store host callee save registers, return address, and processor flags to stack.
